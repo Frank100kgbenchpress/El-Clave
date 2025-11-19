@@ -2,7 +2,7 @@ from http.server import SimpleHTTPRequestHandler, HTTPServer
 import os
 import json
 import urllib.parse
-import threading
+from socketserver import ThreadingMixIn
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -33,10 +33,7 @@ class Handler(SimpleHTTPRequestHandler):
     # Manejo POST
     def do_POST(self):
         if self.path == "/login":
-            # thread = threading.Thread(target=self.handle_login)
-            # thread.daemon = True
-            # thread.start()
-            self.handle_login
+            self.handle_login()
         else:
             self.send_error(404, "Endpoint not found")
 
@@ -72,9 +69,16 @@ class Handler(SimpleHTTPRequestHandler):
         return
 
 
+# ============================
+# Servidor con hilos automáticos
+# ============================
+class ThreadingHTTPServer(ThreadingMixIn, HTTPServer):
+    daemon_threads = True
+
+
 def run():
     print("Cargando usuarios desde:", USERS_FILE)
-    server = HTTPServer(("0.0.0.0", 8080), Handler)
+    server = ThreadingHTTPServer(("0.0.0.0", 8080), Handler)
     print("Servidor corriendo en http://0.0.0.0:8080")
     server.serve_forever()
 
