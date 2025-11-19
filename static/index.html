@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <title>El Clave</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+
+<body>
+  <div class="container">
+    <header>
+      <h1>La-Clave</h1>
+      <h3>Login!!</h3>
+    </header>
+
+    <form id="loginForm" class="login">
+
+      <!-- Campo usuario -->
+      <div class="field">
+        <input id="username" type="text" placeholder="Username or Email" autocomplete="username" />
+        <p class="error-msg-field" id="usernameError"></p>
+      </div>
+
+      <!-- Campo contraseña -->
+      <div class="field">
+        <div class="password-container">
+          <input id="password" type="password" placeholder="Password" autocomplete="current-password" />
+          <img id="togglePassword" class="eye-icon" src="icons/eye.svg" alt="Mostrar contraseña">
+        </div>
+        <p class="error-msg-field" id="passwordError"></p>
+      </div>
+
+      <button type="submit" id="loginBtn">Login</button>
+
+      <!-- Error general (del servidor) -->
+      <p id="generalError" class="error-msg-general"></p>
+    </form>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+
+</html>

@@ -27,6 +27,13 @@ body {
   gap: 15px;
 }
 
+/* Cada grupo de campo (input + mensaje de error) */
+.field {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
 /* Inputs */
 .login input {
   padding: 12px;
@@ -34,6 +41,8 @@ body {
   border: 1px solid #ccc;
   border-radius: 6px;
   box-sizing: border-box;
+  width: 100%;
+  /* << full width */
 }
 
 /* Contenedor del password con el ojo */
@@ -44,19 +53,25 @@ body {
 
 .password-container input {
   width: 100%;
-  padding-right: 44px;
+  padding-right: 40px;
   /* espacio para el icono */
+  box-sizing: border-box;
+  /* evita romper ancho */
 }
 
-.password-container .eye {
+.eye-icon {
   position: absolute;
   right: 10px;
   top: 50%;
   transform: translateY(-50%);
+  width: 24px;
+  height: 24px;
   cursor: pointer;
-  user-select: none;
-  font-size: 18px;
   opacity: 0.8;
+}
+
+.eye-icon:hover {
+  opacity: 1;
 }
 
 /* Botón */
@@ -74,28 +89,28 @@ body {
   background: #0050cc;
 }
 
-.password-container {
-  position: relative;
-  width: 100%;
+/* Errores individuales de cada campo */
+.error-msg-field {
+  color: #d32f2f;
+  font-size: 0.85rem;
+  margin-top: 4px;
+  text-align: left;
+  /* << alineado a la izquierda */
+  height: 16px;
+  transition: opacity 0.2s ease-in-out;
 }
 
-.password-container input {
-  width: 100%;
-  padding-right: 40px;
-  /* espacio para el icono */
+/* Error general (credenciales incorrectas) */
+.error-msg-general {
+  color: #b71c1c;
+  font-size: 0.9rem;
+  margin-top: 12px;
+  text-align: center;
+  transition: opacity 0.2s ease-in-out;
 }
 
-.eye-icon {
-  position: absolute;
-  right: 10px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 24px;
-  height: 24px;
-  cursor: pointer;
-  opacity: 0.8;
-}
-
-.eye-icon:hover {
-  opacity: 1;
+/* Estilo para inputs con error */
+input.error {
+  border: 1px solid #d32f2f !important;
+  background-color: #ffecec;
 }
