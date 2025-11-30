@@ -1,12 +1,13 @@
 #!/bin/bash
-# autorizar.sh <IP_CLIENTE>
+# autorizar.sh <IP_CLIENTE> <MAC_CLIENTE>
 
-if [ -z "$1" ]; then
-    echo "Uso: $0 <IP_CLIENTE>"
+if [ -z "$1" ] || [ -z "$2" ]; then
+    echo "Uso: $0 <IP_CLIENTE> <MAC_CLIENTE>"
     exit 1
 fi
 
 CLIENT_IP="$1"
+CLIENT_MAC="$(echo "$2" | tr '[:upper:]' '[:lower:]')"
 LAN="wlp2s0"
 
 # -----------------------------
@@ -19,12 +20,12 @@ echo "[+] WAN detectada automáticamente: $WAN"
 # Reglas para permitir al cliente navegar   #
 #############################################
 
-iptables -C FORWARD -s "$CLIENT_IP" -o "$WAN" -m state --state NEW,ESTABLISHED,RELATED -j ACCEPT >/dev/null 2>&1 && {
+iptables -C FORWARD -s "$CLIENT_IP" -o "$WAN" -m mac --mac-source "$CLIENT_MAC" -m state --state NEW,ESTABLISHED,RELATED -j ACCEPT >/dev/null 2>&1 && {
     echo "[*] $CLIENT_IP ya autorizado"
     exit 0
 }
 
-iptables -I FORWARD 1 -s "$CLIENT_IP" -o "$WAN" -m state --state NEW,ESTABLISHED,RELATED -j ACCEPT
+iptables -I FORWARD 1 -s "$CLIENT_IP" -o "$WAN" -m mac --mac-source "$CLIENT_MAC" -m state --state NEW,ESTABLISHED,RELATED -j ACCEPT
 iptables -I FORWARD 1 -d "$CLIENT_IP" -i "$WAN" -m state --state ESTABLISHED,RELATED -j ACCEPT
 
 iptables -I FORWARD 1 -s "$CLIENT_IP" -o "$WAN" -p icmp -j ACCEPT

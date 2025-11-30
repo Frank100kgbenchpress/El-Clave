@@ -8,6 +8,7 @@ import socket
 import subprocess
 import threading
 import time
+import re
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(BASE_DIR, "static")
@@ -19,10 +20,23 @@ REVOKE_SCRIPT = os.path.join(BASE_DIR, "revocar.sh")
 
 PORT = 8080
 
-# Store de IPs autorizadas con última actividad
+# Store de clientes autorizados: { ip: {"mac": str, "last_seen": float} }
 authorized = {}
 auth_lock = threading.Lock()
 TIMEOUT_SECONDS = 120
+def get_mac_for_ip(ip: str):
+    try:
+        with open("/proc/net/arp", "r") as f:
+            lines = f.read().strip().splitlines()
+        for line in lines[1:]:
+            parts = line.split()
+            if len(parts) >= 4 and parts[0] == ip:
+                mac = parts[3]
+                if mac and re.match(r"^[0-9a-fA-F:]{17}$", mac) and mac != "00:00:00:00:00:00":
+                    return mac.lower()
+    except Exception as e:
+        print("[!] Error leyendo /proc/net/arp:", e)
+    return None
 
 
 def load_users():
@@ -126,7 +140,7 @@ class CustomHandler:
         if path == "/heartbeat":
             with auth_lock:
                 if client_ip in authorized:
-                    authorized[client_ip] = time.time()
+                    authorized[client_ip]["last_seen"] = time.time()
                     return self.send_response(200, "OK", b"OK", "text/plain")
             return self.send_response(401, "Unauthorized", b"UNAUTHORIZED", "text/plain")
 
@@ -197,19 +211,24 @@ class CustomHandler:
         username = data.get("username", [""])[0]
         password = data.get("password", [""])[0]
         client_ip = self.client_address[0]
+        client_mac = get_mac_for_ip(client_ip)
 
         print(f"[+] Login attempt from {client_ip}: {username}")
+
+        if not client_mac:
+            print(f"[!] MAC no disponible para {client_ip}. Pide recargar o generar tráfico.")
+            return self.send_response(401, "Unauthorized", b"MAC no detectada, reintenta", "text/plain")
 
         users = load_users()
         valid = any(u["username"] == username and u["password"] == password for u in users)
 
         if valid:
-            print(f"[+] Usuario {username} autenticado. Autorizando IP {client_ip}...")
+            print(f"[+] Usuario {username} autenticado. Autorizando IP {client_ip} MAC {client_mac}...")
 
             try:
-                subprocess.run(["sudo", AUTORIZE_SCRIPT, client_ip], check=True)
+                subprocess.run(["sudo", AUTORIZE_SCRIPT, client_ip, client_mac], check=True)
                 with auth_lock:
-                    authorized[client_ip] = time.time()
+                    authorized[client_ip] = {"mac": client_mac, "last_seen": time.time()}
                 self.send_response(200, "OK", b"OK", "text/plain")
             except Exception as e:
                 print("[!] Error ejecutando autorizar.sh:", e)
@@ -220,13 +239,16 @@ class CustomHandler:
 
     def handle_logout(self):
         client_ip = self.client_address[0]
-        print(f"[+] Logout desde {client_ip}")
+        with auth_lock:
+            client_mac = authorized.get(client_ip, {}).get("mac")
+        if not client_mac:
+            client_mac = get_mac_for_ip(client_ip) or "00:00:00:00:00:00"
+        print(f"[+] Logout desde {client_ip} (MAC {client_mac})")
 
         try:
-            subprocess.run(["sudo", REVOKE_SCRIPT, client_ip], check=True)
+            subprocess.run(["sudo", REVOKE_SCRIPT, client_ip, client_mac], check=True)
             with auth_lock:
-                if client_ip in authorized:
-                    authorized.pop(client_ip, None)
+                authorized.pop(client_ip, None)
 
             self.send_response(200, "OK", b"LOGOUT_OK", "text/plain")
         except Exception as e:
@@ -268,15 +290,15 @@ def run():
             now = time.time()
             expired = []
             with auth_lock:
-                for ip, last_seen in list(authorized.items()):
-                    if now - last_seen > TIMEOUT_SECONDS:
-                        expired.append(ip)
-            for ip in expired:
+                for ip, data in list(authorized.items()):
+                    if now - data["last_seen"] > TIMEOUT_SECONDS:
+                        expired.append((ip, data["mac"]))
+            for ip, mac in expired:
                 try:
-                    print(f"[!] Inactividad > {TIMEOUT_SECONDS}s para {ip}. Revocando...")
-                    subprocess.run(["sudo", REVOKE_SCRIPT, ip], check=True)
+                    print(f"[!] Inactividad > {TIMEOUT_SECONDS}s para {ip} ({mac}). Revocando...")
+                    subprocess.run(["sudo", REVOKE_SCRIPT, ip, mac], check=True)
                 except Exception as e:
-                    print(f"[!] Error revocando {ip} por inactividad:", e)
+                    print(f"[!] Error revocando {ip}/{mac} por inactividad:", e)
                 finally:
                     with auth_lock:
                         authorized.pop(ip, None)
