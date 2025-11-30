@@ -53,8 +53,10 @@ document.addEventListener("DOMContentLoaded", () => {
                 });
                 const result = await response.text();
                 if (result === "OK") {
+                    console.log("Login successful. Redirecting to welcome page.");
                     window.location.href = "welcome.html";
                 } else {
+                    console.error("Login failed:", result);
                     generalError.textContent = result;
                 }
             } catch (err) {

@@ -1,24 +1,27 @@
 #!/usr/bin/env python3
 # portal_server.py
-from http.server import SimpleHTTPRequestHandler, HTTPServer
+
 import os
 import json
 import urllib.parse
-from socketserver import ThreadingMixIn
+import socket
 import subprocess
 import threading
-import time
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 USERS_FILE = os.path.join(BASE_DIR, "data", "users.json")
+
+SETUP_FIREWALL = os.path.join(BASE_DIR, "setup_firewall.sh")
 AUTORIZE_SCRIPT = os.path.join(BASE_DIR, "autorizar.sh")
 REVOKE_SCRIPT = os.path.join(BASE_DIR, "revocar.sh")
+
 PORT = 8080
 
-# Simple store of authorized IPs (in-memory). For persistence, guarda en archivo.
+# Simple store of authorized IPs (in-memory)
 authorized = set()
 auth_lock = threading.Lock()
+
 
 def load_users():
     try:
@@ -29,24 +32,128 @@ def load_users():
         print("Error cargando users.json:", e)
         return []
 
-class Handler(SimpleHTTPRequestHandler):
-    def translate_path(self, path):
+
+def run_setup_firewall():
+    print("[+] Ejecutando setup_firewall.sh...")
+
+    try:
+        subprocess.run(["sudo", SETUP_FIREWALL], check=True)
+        print("[+] setup_firewall.sh ejecutado correctamente.")
+    except Exception as e:
+        print("[!] ERROR ejecutando setup_firewall.sh:", e)
+        print("[!] El portal NO funcionará correctamente sin las reglas de iptables.")
+
+
+class CustomHTTPServer:
+    def __init__(self, host, port, handler_class):
+        self.host = host
+        self.port = port
+        self.handler_class = handler_class
+        self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.server_socket.bind((self.host, self.port))
+        self.server_socket.listen(5)
+
+    def serve_forever(self):
+        print(f"Servidor corriendo en http://{self.host}:{self.port}")
+        while True:
+            client_socket, client_address = self.server_socket.accept()
+            handler = self.handler_class(client_socket, client_address)
+            handler.handle()
+
+
+class CustomHandler:
+    def __init__(self, client_socket, client_address):
+        self.client_socket = client_socket
+        self.client_address = client_address
+
+    def handle(self):
+        method, path, headers, body = self.read_request()
+
+        if method == "GET":
+            self.do_GET(path)
+        elif method == "POST":
+            self.do_POST(path, headers, body)
+        else:
+            self.send_response(405, "Method Not Allowed")
+
+    def read_request(self):
+        # Leer hasta el fin de headers (\r\n\r\n)
+        data = b""
+        while b"\r\n\r\n" not in data:
+            chunk = self.client_socket.recv(1024)
+            if not chunk:
+                break
+            data += chunk
+
+        header_end = data.find(b"\r\n\r\n")
+        headers_raw = data[:header_end].decode("utf-8", errors="replace")
+        body = data[header_end + 4:]
+
+        lines = headers_raw.split("\r\n")
+        request_line = lines[0]
+        method, path, _ = request_line.split()
+
+        headers = {}
+        for line in lines[1:]:
+            if not line:
+                continue
+            if ": " in line:
+                key, value = line.split(": ", 1)
+                headers[key] = value
+
+        content_length = int(headers.get("Content-Length", 0))
+        # Si falta parte del cuerpo, leer el resto
+        remaining = content_length - len(body)
+        while remaining > 0:
+            chunk = self.client_socket.recv(remaining)
+            if not chunk:
+                break
+            body += chunk
+            remaining -= len(chunk)
+
+        return method, path, headers, body
+
+    def do_GET(self, path):
         if path == "/":
             path = "/index.html"
-        return os.path.join(STATIC_DIR, path.lstrip("/"))
 
-    def do_POST(self):
-        if self.path == "/login":
-            self.handle_login()
-        elif self.path == "/logout":
+        file_path = os.path.join(STATIC_DIR, path.lstrip("/"))
+
+        if os.path.exists(file_path):
+            content_type = "text/html"
+            if file_path.endswith(".css"):
+                content_type = "text/css"
+            elif file_path.endswith(".js"):
+                content_type = "application/javascript"
+            elif file_path.endswith(".png"):
+                content_type = "image/png"
+            elif file_path.endswith(".jpg") or file_path.endswith(".jpeg"):
+                content_type = "image/jpeg"
+            elif file_path.endswith(".gif"):
+                content_type = "image/gif"
+            elif file_path.endswith(".svg"):
+                content_type = "image/svg+xml"
+
+            with open(file_path, "rb") as f:
+                content = f.read()
+
+            self.send_response(200, "OK", content, content_type)
+        else:
+            self.send_response(404, "Not Found")
+
+    def do_POST(self, path, headers, body):
+        if path == "/login":
+            self.handle_login(headers, body)
+        elif path == "/logout":
             self.handle_logout()
         else:
-            self.send_error(404, "Endpoint not found")
+            self.send_response(404, "Not Found")
 
-    def handle_login(self):
-        length = int(self.headers.get("Content-Length", 0))
-        body = self.rfile.read(length).decode("utf-8")
-        data = urllib.parse.parse_qs(body)
+    def handle_login(self, headers, body):
+        # body viene como bytes; decodificar y parsear
+        body_text = body.decode("utf-8", errors="replace")
+        data = urllib.parse.parse_qs(body_text)
 
         username = data.get("username", [""])[0]
         password = data.get("password", [""])[0]
@@ -58,93 +165,50 @@ class Handler(SimpleHTTPRequestHandler):
         valid = any(u["username"] == username and u["password"] == password for u in users)
 
         if valid:
-            # Call autorizar script to open iptables for this client
-            # Necesita ser ejecutado con permisos (ejecutar servidor con sudo o configurar sudoers)
-            try:
-                # Llamada sin mostrar output; captura errores
-                res = subprocess.run(["sudo", AUTORIZE_SCRIPT, client_ip], capture_output=True, text=True, timeout=10)
-                if res.returncode == 0:
-                    with auth_lock:
-                        authorized.add(client_ip)
-                    response = "OK"
-                    print(f"[+] {client_ip} autorizado")
-                else:
-                    response = "ERROR: no se pudo autorizar (ver logs)"
-                    print("[!] autorizar.sh fallo:", res.stdout, res.stderr)
-            except Exception as e:
-                response = "ERROR: exception al autorizar"
-                print("[!] Exception al ejecutar autorizar.sh:", e)
-        else:
-            response = "Invalid username or password"
+            print(f"[+] Usuario {username} autenticado. Autorizando IP {client_ip}...")
 
-        self.send_response(200)
-        self.send_header("Content-Type", "text/plain")
-        self.end_headers()
-        self.wfile.write(response.encode("utf-8"))
+            try:
+                subprocess.run(["sudo", AUTORIZE_SCRIPT, client_ip], check=True)
+                authorized.add(client_ip)
+                self.send_response(200, "OK", b"OK", "text/plain")
+            except Exception as e:
+                print("[!] Error ejecutando autorizar.sh:", e)
+                self.send_response(500, "Internal Server Error", b"Error autorizando", "text/plain")
+        else:
+            print(f"[!] Login fallido para {client_ip}")
+            self.send_response(401, "Unauthorized", b"Credenciales invalidas", "text/plain")
 
     def handle_logout(self):
         client_ip = self.client_address[0]
-        print(f"[+] Logout attempt from {client_ip}")
-        # Ejecutar script de revocación
+        print(f"[+] Logout desde {client_ip}")
+
         try:
-            res = subprocess.run(["sudo", REVOKE_SCRIPT, client_ip], capture_output=True, text=True, timeout=10)
-            if res.returncode == 0:
-                with auth_lock:
-                    if client_ip in authorized:
-                        authorized.remove(client_ip)
-                response = "LOGOUT_OK"
-                print(f"[+] {client_ip} revocado")
-            else:
-                response = "ERROR: no se pudo revocar"
-                print("[!] revocar.sh fallo:", res.stdout, res.stderr)
+            subprocess.run(["sudo", REVOKE_SCRIPT, client_ip], check=True)
+            with auth_lock:
+                authorized.discard(client_ip)
+
+            self.send_response(200, "OK", b"LOGOUT_OK", "text/plain")
         except Exception as e:
-            response = "ERROR: exception al revocar"
-            print("[!] Exception al ejecutar revocar.sh:", e)
-        self.send_response(200)
-        self.send_header("Content-Type", "text/plain")
-        self.end_headers()
-        self.wfile.write(response.encode("utf-8"))
+            print("[!] Error ejecutando revocar.sh:", e)
+            self.send_response(500, "Internal Server Error", b"Error revocando", "text/plain")
 
-    def do_GET(self):
-        client_ip = self.client_address[0]
-        # Si el cliente NO está autorizado, forzamos a entregar el portal para (casi) cualquier ruta
-        # incluyendo rutas de detección adicionales que algunos sistemas usan ("fastconnect", etc.).
-        with auth_lock:
-            authorized_ip = client_ip in authorized
-        if not authorized_ip:
-            # Extensiones de recursos estáticos permitidos (para que la página de login cargue su CSS/JS/iconos)
-            allowed_ext = (".css", ".js", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico")
-            # Rutas explícitas de detección de conectividad de distintos sistemas
-            captive_paths = {"/generate_204", "/hotspot-detect.html", "/ncsi.txt", "/connecttest.txt",
-                             "/success.txt", "/redirect", "/check_network_status", "/fastconnect"}
-            path_lower = self.path.lower()
-            # Si es un recurso estático (para que cargue assets) lo servimos normalmente
-            if path_lower.endswith(allowed_ext):
-                return super().do_GET()
-            # Si es el endpoint de login, dejamos que el POST se maneje aparte (GET mostrará index)
-            if self.path == "/login":
-                pass  # caerá a servir index
-            # Para cualquier otra ruta (incluyendo detección) devolver el portal
-            self.send_response(200)
-            self.send_header("Content-Type", "text/html")
-            self.end_headers()
-            with open(os.path.join(STATIC_DIR, "index.html"), "rb") as f:
-                self.wfile.write(f.read())
-            return
-        # Autorizado: comportamiento normal
-        return super().do_GET()
+    def send_response(self, status_code, status_message, content=b"", content_type="text/plain"):
+        response = f"HTTP/1.1 {status_code} {status_message}\r\n"
+        response += f"Content-Type: {content_type}\r\n"
+        response += f"Content-Length: {len(content)}\r\n\r\n"
+        self.client_socket.sendall(response.encode() + content)
+        self.client_socket.close()
 
-    def log_message(self, format, *args):
-        return
-
-class ThreadingHTTPServer(ThreadingMixIn, HTTPServer):
-    daemon_threads = True
 
 def run():
     print("Cargando usuarios desde:", USERS_FILE)
-    server = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
-    print(f"Servidor corriendo en http://0.0.0.0:{PORT}")
+
+    # 🔥 Ejecutar automáticamente las reglas del firewall
+    run_setup_firewall()
+
+    server = CustomHTTPServer("0.0.0.0", PORT, CustomHandler)
     server.serve_forever()
+
 
 if __name__ == "__main__":
     run()
