@@ -115,8 +115,33 @@ class CustomHandler:
         return method, path, headers, body
 
     def do_GET(self, path):
+        client_ip = self.client_address[0]
+
         if path == "/":
             path = "/index.html"
+
+        # Lista de endpoints típicos de detección de portal cautivo
+        detection_paths = {
+            "/hotspot-detect.html",
+            "/generate_204",
+            "/gen_204",
+            "/ncsi.txt",
+            "/connecttest.txt",
+            "/check_network_status.txt",
+        }
+
+        # Permitir assets necesarios para el login cuando no esté autorizado
+        allow_unauth_prefixes = ("/icons/",)
+        allow_unauth_exact = {"/index.html", "/script.js", "/styles.css", "/favicon.ico"}
+
+        is_auth = client_ip in authorized
+
+        # Si NO está autorizado y no es un asset permitido, forzar redirección al login
+        if not is_auth:
+            if path in detection_paths or (
+                path not in allow_unauth_exact and not any(path.startswith(p) for p in allow_unauth_prefixes)
+            ):
+                return self.send_redirect("/index.html")
 
         file_path = os.path.join(STATIC_DIR, path.lstrip("/"))
 
@@ -140,6 +165,9 @@ class CustomHandler:
 
             self.send_response(200, "OK", content, content_type)
         else:
+            # Si el recurso no existe, para no mostrar 404 en CNA, redirigir al login si no autorizado
+            if not is_auth:
+                return self.send_redirect("/index.html")
             self.send_response(404, "Not Found")
 
     def do_POST(self, path, headers, body):
@@ -192,12 +220,25 @@ class CustomHandler:
             print("[!] Error ejecutando revocar.sh:", e)
             self.send_response(500, "Internal Server Error", b"Error revocando", "text/plain")
 
-    def send_response(self, status_code, status_message, content=b"", content_type="text/plain"):
+    def send_response(self, status_code, status_message, content=b"", content_type="text/plain", headers=None):
         response = f"HTTP/1.1 {status_code} {status_message}\r\n"
         response += f"Content-Type: {content_type}\r\n"
-        response += f"Content-Length: {len(content)}\r\n\r\n"
+        response += f"Content-Length: {len(content)}\r\n"
+        if headers:
+            for k, v in headers.items():
+                response += f"{k}: {v}\r\n"
+        response += "\r\n"
         self.client_socket.sendall(response.encode() + content)
         self.client_socket.close()
+
+    def send_redirect(self, location="/index.html"):
+        headers = {
+            "Location": location,
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0",
+        }
+        self.send_response(302, "Found", b"", "text/plain", headers)
 
 
 def run():
