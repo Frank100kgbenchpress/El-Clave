@@ -7,6 +7,7 @@ import urllib.parse
 import socket
 import subprocess
 import threading
+import time
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(BASE_DIR, "static")
@@ -18,9 +19,10 @@ REVOKE_SCRIPT = os.path.join(BASE_DIR, "revocar.sh")
 
 PORT = 8080
 
-# Simple store of authorized IPs (in-memory)
-authorized = set()
+# Store de IPs autorizadas con última actividad
+authorized = {}
 auth_lock = threading.Lock()
+TIMEOUT_SECONDS = 120
 
 
 def load_users():
@@ -120,6 +122,14 @@ class CustomHandler:
         if path == "/":
             path = "/index.html"
 
+        # Heartbeat de cliente autorizado
+        if path == "/heartbeat":
+            with auth_lock:
+                if client_ip in authorized:
+                    authorized[client_ip] = time.time()
+                    return self.send_response(200, "OK", b"OK", "text/plain")
+            return self.send_response(401, "Unauthorized", b"UNAUTHORIZED", "text/plain")
+
         # Lista de endpoints típicos de detección de portal cautivo
         detection_paths = {
             "/hotspot-detect.html",
@@ -134,7 +144,8 @@ class CustomHandler:
         allow_unauth_prefixes = ("/icons/",)
         allow_unauth_exact = {"/index.html", "/script.js", "/styles.css", "/favicon.ico"}
 
-        is_auth = client_ip in authorized
+        with auth_lock:
+            is_auth = client_ip in authorized
 
         # Si NO está autorizado y no es un asset permitido, forzar redirección al login
         if not is_auth:
@@ -197,7 +208,8 @@ class CustomHandler:
 
             try:
                 subprocess.run(["sudo", AUTORIZE_SCRIPT, client_ip], check=True)
-                authorized.add(client_ip)
+                with auth_lock:
+                    authorized[client_ip] = time.time()
                 self.send_response(200, "OK", b"OK", "text/plain")
             except Exception as e:
                 print("[!] Error ejecutando autorizar.sh:", e)
@@ -213,7 +225,8 @@ class CustomHandler:
         try:
             subprocess.run(["sudo", REVOKE_SCRIPT, client_ip], check=True)
             with auth_lock:
-                authorized.discard(client_ip)
+                if client_ip in authorized:
+                    authorized.pop(client_ip, None)
 
             self.send_response(200, "OK", b"LOGOUT_OK", "text/plain")
         except Exception as e:
@@ -248,6 +261,28 @@ def run():
     run_setup_firewall()
 
     server = CustomHTTPServer("0.0.0.0", PORT, CustomHandler)
+
+    # Hilo reaper que revoca por inactividad
+    def reaper_loop():
+        while True:
+            now = time.time()
+            expired = []
+            with auth_lock:
+                for ip, last_seen in list(authorized.items()):
+                    if now - last_seen > TIMEOUT_SECONDS:
+                        expired.append(ip)
+            for ip in expired:
+                try:
+                    print(f"[!] Inactividad > {TIMEOUT_SECONDS}s para {ip}. Revocando...")
+                    subprocess.run(["sudo", REVOKE_SCRIPT, ip], check=True)
+                except Exception as e:
+                    print(f"[!] Error revocando {ip} por inactividad:", e)
+                finally:
+                    with auth_lock:
+                        authorized.pop(ip, None)
+            time.sleep(15)
+
+    threading.Thread(target=reaper_loop, daemon=True).start()
     server.serve_forever()
 
 

@@ -68,6 +68,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // --- Lógica de Logout (solo si existe el botón) ---
     if (logoutBtn) {
+        // Heartbeat cada 30s mientras esté la página de bienvenida abierta
+        try {
+            setInterval(() => {
+                fetch('/heartbeat', { method: 'GET', cache: 'no-store' }).catch(() => {});
+            }, 30000);
+        } catch (_) {}
+
         logoutBtn.addEventListener("click", async () => {
             try {
                 const res = await fetch("/logout", { method: "POST" });
