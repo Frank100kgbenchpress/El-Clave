@@ -1,4 +1,5 @@
 import socket
+import threading
 
 
 class CustomHTTPServer:
@@ -7,14 +8,28 @@ class CustomHTTPServer:
         self.port = port
         self.handler_class = handler_class
         self.deps = deps
+
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.server_socket.bind((self.host, self.port))
         self.server_socket.listen(5)
 
+    def handle_client(self, client_socket, client_address):
+        try:
+            handler = self.handler_class(client_socket, client_address, self.deps)
+            handler.handle()
+        except Exception as e:
+            print(f"Error atendiendo a {client_address}: {e}")
+        finally:
+            client_socket.close()
+
     def serve_forever(self):
         print(f"Servidor corriendo en http://{self.host}:{self.port}")
         while True:
             client_socket, client_address = self.server_socket.accept()
-            handler = self.handler_class(client_socket, client_address, self.deps)
-            handler.handle()
+            thread = threading.Thread(
+                target=self.handle_client,
+                args=(client_socket, client_address),
+                daemon=True,
+            )
+            thread.start()

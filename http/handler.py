@@ -32,15 +32,17 @@ class CustomHandler:
     def do_GET(self, ctx, responder):
         client_ip = self.client_address[0]
         path = ctx.path if ctx.path != "/" else "/index.html"
-        authorized = self.deps['authorized']
-        auth_lock = self.deps['auth_lock']
-        STATIC_DIR = self.deps['STATIC_DIR']
+        authorized = self.deps["authorized"]
+        auth_lock = self.deps["auth_lock"]
+        STATIC_DIR = self.deps["STATIC_DIR"]
         if path == "/heartbeat":
             with auth_lock:
                 if client_ip in authorized:
                     authorized[client_ip]["last_seen"] = time.time()
                     return responder.send_response(200, "OK", b"OK", "text/plain")
-            return responder.send_response(401, "Unauthorized", b"UNAUTHORIZED", "text/plain")
+            return responder.send_response(
+                401, "Unauthorized", b"UNAUTHORIZED", "text/plain"
+            )
         detection_paths = {
             "/hotspot-detect.html",
             "/generate_204",
@@ -50,12 +52,18 @@ class CustomHandler:
             "/check_network_status.txt",
         }
         allow_unauth_prefixes = ("/icons/",)
-        allow_unauth_exact = {"/index.html", "/script.js", "/styles.css", "/favicon.ico"}
+        allow_unauth_exact = {
+            "/index.html",
+            "/script.js",
+            "/styles.css",
+            "/favicon.ico",
+        }
         with auth_lock:
             is_auth = client_ip in authorized
         if not is_auth:
             if path in detection_paths or (
-                path not in allow_unauth_exact and not any(path.startswith(p) for p in allow_unauth_prefixes)
+                path not in allow_unauth_exact
+                and not any(path.startswith(p) for p in allow_unauth_prefixes)
             ):
                 return responder.send_redirect("/index.html")
         file_path = os.path.join(STATIC_DIR, path.lstrip("/"))
@@ -96,38 +104,55 @@ class CustomHandler:
         username = data.get("username", [""])[0]
         password = data.get("password", [""])[0]
         client_ip = self.client_address[0]
-        get_mac_for_ip = self.deps['get_mac_for_ip']
-        load_users = self.deps['load_users']
-        AUTORIZE_SCRIPT = self.deps['AUTORIZE_SCRIPT']
-        authorized = self.deps['authorized']
-        auth_lock = self.deps['auth_lock']
+        get_mac_for_ip = self.deps["get_mac_for_ip"]
+        load_users = self.deps["load_users"]
+        AUTORIZE_SCRIPT = self.deps["AUTORIZE_SCRIPT"]
+        authorized = self.deps["authorized"]
+        auth_lock = self.deps["auth_lock"]
         client_mac = get_mac_for_ip(client_ip)
         print(f"[+] Login attempt from {client_ip}: {username}")
         if not client_mac:
-            print(f"[!] MAC no disponible para {client_ip}. Pide recargar o generar tráfico.")
-            return responder.send_response(401, "Unauthorized", b"MAC no detectada, reintenta", "text/plain")
+            print(
+                f"[!] MAC no disponible para {client_ip}. Pide recargar o generar tráfico."
+            )
+            return responder.send_response(
+                401, "Unauthorized", b"MAC no detectada, reintenta", "text/plain"
+            )
         users = load_users()
-        valid = any(u["username"] == username and u["password"] == password for u in users)
+        valid = any(
+            u["username"] == username and u["password"] == password for u in users
+        )
         if valid:
-            print(f"[+] Usuario {username} autenticado. Autorizando IP {client_ip} MAC {client_mac}...")
+            print(
+                f"[+] Usuario {username} autenticado. Autorizando IP {client_ip} MAC {client_mac}..."
+            )
             try:
-                subprocess.run(["sudo", AUTORIZE_SCRIPT, client_ip, client_mac], check=True)
+                subprocess.run(
+                    ["sudo", AUTORIZE_SCRIPT, client_ip, client_mac], check=True
+                )
                 with auth_lock:
-                    authorized[client_ip] = {"mac": client_mac, "last_seen": time.time()}
+                    authorized[client_ip] = {
+                        "mac": client_mac,
+                        "last_seen": time.time(),
+                    }
                 responder.send_response(200, "OK", b"OK", "text/plain")
             except Exception as e:
                 print("[!] Error ejecutando autorizar.sh:", e)
-                responder.send_response(500, "Internal Server Error", b"Error autorizando", "text/plain")
+                responder.send_response(
+                    500, "Internal Server Error", b"Error autorizando", "text/plain"
+                )
         else:
             print(f"[!] Login fallido para {client_ip}")
-            responder.send_response(401, "Unauthorized", b"Credenciales invalidas", "text/plain")
+            responder.send_response(
+                401, "Unauthorized", b"Credenciales invalidas", "text/plain"
+            )
 
     def handle_logout(self, responder):
         client_ip = self.client_address[0]
-        REVOKE_SCRIPT = self.deps['REVOKE_SCRIPT']
-        authorized = self.deps['authorized']
-        auth_lock = self.deps['auth_lock']
-        get_mac_for_ip = self.deps['get_mac_for_ip']
+        REVOKE_SCRIPT = self.deps["REVOKE_SCRIPT"]
+        authorized = self.deps["authorized"]
+        auth_lock = self.deps["auth_lock"]
+        get_mac_for_ip = self.deps["get_mac_for_ip"]
         with auth_lock:
             client_mac = authorized.get(client_ip, {}).get("mac")
         if not client_mac:
@@ -140,4 +165,6 @@ class CustomHandler:
             responder.send_response(200, "OK", b"LOGOUT_OK", "text/plain")
         except Exception as e:
             print("[!] Error ejecutando revocar.sh:", e)
-            responder.send_response(500, "Internal Server Error", b"Error revocando", "text/plain")
+            responder.send_response(
+                500, "Internal Server Error", b"Error revocando", "text/plain"
+            )

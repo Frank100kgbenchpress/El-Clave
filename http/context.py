@@ -17,7 +17,7 @@ class HTTPContext:
             return None
         header_end = data.find(b"\r\n\r\n")
         headers_raw = data[:header_end].decode("utf-8", errors="replace")
-        body = data[header_end + 4:]
+        body = data[header_end + 4 :]
         lines = headers_raw.split("\r\n")
         if not lines:
             return None
