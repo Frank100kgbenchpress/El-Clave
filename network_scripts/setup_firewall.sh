@@ -32,8 +32,9 @@ iptables -A INPUT  -i $WAN -m state --state ESTABLISHED,RELATED -j ACCEPT
 # Acceso al portal
 iptables -A INPUT -p tcp -i $LAN --dport 8080 -j ACCEPT
 iptables -A INPUT -p tcp -i $LAN --dport 80   -j ACCEPT
+# HTTPS deshabilitado (evitar problemas de redirección/TLS)
 
-# Redirección HTTP hacia portal
+# Redirección HTTP hacia portal (no tocar 443/HSTS)
 iptables -t nat -A PREROUTING -i $LAN -p tcp --dport 80 -j REDIRECT --to-ports 8080
 
 # DHCP/DNS si el host los provee

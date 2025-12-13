@@ -61,7 +61,16 @@ class CustomHandler:
         with auth_lock:
             is_auth = client_ip in authorized
         if not is_auth:
-            if path in detection_paths or (
+            if path in detection_paths:
+                # Responder directamente con el portal para las rutas de detección
+                index_path = os.path.join(STATIC_DIR, "index.html")
+                if os.path.exists(index_path):
+                    with open(index_path, "rb") as f:
+                        content = f.read()
+                    return responder.send_response(200, "OK", content, "text/html")
+                else:
+                    return responder.send_response(200, "OK", b"", "text/html")
+            if (
                 path not in allow_unauth_exact
                 and not any(path.startswith(p) for p in allow_unauth_prefixes)
             ):
@@ -135,7 +144,8 @@ class CustomHandler:
                         "mac": client_mac,
                         "last_seen": time.time(),
                     }
-                responder.send_response(200, "OK", b"OK", "text/plain")
+                # Responder OK; el frontend hará la navegación a /welcome.html
+                return responder.send_response(200, "OK", b"OK", "text/plain")
             except Exception as e:
                 print("[!] Error ejecutando autorizar.sh:", e)
                 responder.send_response(

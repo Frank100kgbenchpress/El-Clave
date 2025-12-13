@@ -19,6 +19,7 @@ AUTORIZE_SCRIPT = os.path.join(SCRIPTS_DIR, "autorizar.sh")
 REVOKE_SCRIPT = os.path.join(SCRIPTS_DIR, "revocar.sh")
 
 PORT = 8080
+HTTPS_PORT = 443  # (deshabilitado)
 
 # Store de clientes autorizados: { ip: {"mac": str, "last_seen": float} }
 authorized = {}
@@ -78,7 +79,8 @@ def run():
         'load_users': load_users,
         'TIMEOUT_SECONDS': TIMEOUT_SECONDS,
     }
-    server = CustomHTTPServer("0.0.0.0", PORT, CustomHandler, deps)
+    # Solo HTTP: deshabilitar HTTPS y generación de certificados
+    server_http = CustomHTTPServer("0.0.0.0", PORT, CustomHandler, deps)
 
     # Hilo reaper que revoca por inactividad
     def reaper_loop():
@@ -101,7 +103,8 @@ def run():
             time.sleep(15)
 
     threading.Thread(target=reaper_loop, daemon=True).start()
-    server.serve_forever()
+    # Servidor HTTP
+    server_http.serve_forever()
 
 
 if __name__ == "__main__":

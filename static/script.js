@@ -54,7 +54,9 @@ document.addEventListener("DOMContentLoaded", () => {
                 const result = await response.text();
                 if (result === "OK") {
                     console.log("Login successful. Redirecting to welcome page.");
-                    window.location.href = "welcome.html";
+                    const portalHost = "10.42.0.1"; // IP del portal en LAN
+                    const portalPort = 8080; // servidor escucha en 8080
+                    window.location.replace(`http://${portalHost}:${portalPort}/welcome.html`);
                 } else {
                     console.error("Login failed:", result);
                     generalError.textContent = result;
@@ -77,15 +79,30 @@ document.addEventListener("DOMContentLoaded", () => {
 
         logoutBtn.addEventListener("click", async () => {
             try {
-                const res = await fetch("/logout", { method: "POST" });
+                console.log("Intentando cerrar sesión...");
+                const res = await fetch("/logout", {
+                    method: "POST",
+                    headers: { "Cache-Control": "no-store" },
+                    credentials: "same-origin",
+                });
+                if (!res.ok) {
+                    const txt = await res.text().catch(() => "");
+                    console.error("Logout no OK:", res.status, txt);
+                    alert("Error al cerrar sesión: " + (txt || res.status));
+                    return;
+                }
                 const txt = await res.text();
+                const portalHost = "10.42.0.1";
+                const portalPort = 8080;
                 if (txt === "LOGOUT_OK") {
-                    alert("Sesión cerrada");
-                    window.location.href = "index.html";
+                    console.log("Sesión cerrada correctamente.");
+                    window.location.replace(`http://${portalHost}:${portalPort}/index.html`);
                 } else {
-                    alert("Error al cerrar sesión: " + txt);
+                    console.warn("Respuesta inesperada de logout:", txt);
+                    window.location.replace(`http://${portalHost}:${portalPort}/index.html`);
                 }
             } catch (e) {
+                console.error("Error de red al cerrar sesión", e);
                 alert("Error de red al cerrar sesión");
             }
         });
