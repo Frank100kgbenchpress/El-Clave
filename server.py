@@ -19,7 +19,7 @@ AUTORIZE_SCRIPT = os.path.join(SCRIPTS_DIR, "autorizar.sh")
 REVOKE_SCRIPT = os.path.join(SCRIPTS_DIR, "revocar.sh")
 
 PORT = 8080
-HTTPS_PORT = 443  # (deshabilitado)
+HTTPS_PORT = 443
 
 # Store de clientes autorizados: { ip: {"mac": str, "last_seen": float} }
 authorized = {}
@@ -79,8 +79,37 @@ def run():
         'load_users': load_users,
         'TIMEOUT_SECONDS': TIMEOUT_SECONDS,
     }
-    # Solo HTTP: deshabilitar HTTPS y generación de certificados
+    # Reactivar HTTPS: generar cert autofirmado con SAN y levantar servidor TLS
     server_http = CustomHTTPServer("0.0.0.0", PORT, CustomHandler, deps)
+    CERTS_DIR = os.path.join(BASE_DIR, "certs")
+    CERT_FILE = os.path.join(CERTS_DIR, "server.crt")
+    KEY_FILE = os.path.join(CERTS_DIR, "server.key")
+    os.makedirs(CERTS_DIR, exist_ok=True)
+
+    try:
+        if not (os.path.exists(CERT_FILE) and os.path.exists(KEY_FILE)):
+            print("[+] Generando certificado SSL autofirmado (SAN portal.local, 10.42.0.1)...")
+            subprocess.run([
+                "openssl", "req", "-x509", "-nodes", "-days", "365",
+                "-newkey", "rsa:2048",
+                "-keyout", KEY_FILE,
+                "-out", CERT_FILE,
+                "-subj", "/CN=portal.local",
+                "-addext", "subjectAltName=DNS:portal.local,IP:10.42.0.1"
+            ], check=True)
+            print("[+] Certificado generado.")
+    except Exception as e:
+        print("[!] No se pudo generar el certificado SSL:", e)
+
+    server_https = None
+    if os.path.exists(CERT_FILE) and os.path.exists(KEY_FILE):
+        try:
+            server_https = CustomHTTPServer(
+                "0.0.0.0", HTTPS_PORT, CustomHandler, deps,
+                ssl_certfile=CERT_FILE, ssl_keyfile=KEY_FILE
+            )
+        except Exception as e:
+            print("[!] No se pudo iniciar servidor HTTPS:", e)
 
     # Hilo reaper que revoca por inactividad
     def reaper_loop():
@@ -103,7 +132,10 @@ def run():
             time.sleep(15)
 
     threading.Thread(target=reaper_loop, daemon=True).start()
-    # Servidor HTTP
+    # Servidores HTTP y HTTPS
+    if server_https:
+        t_https = threading.Thread(target=server_https.serve_forever, daemon=True)
+        t_https.start()
     server_http.serve_forever()
 
 
