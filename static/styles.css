@@ -1,0 +1,167 @@
+/* Centrado de la página */
+body {
+  margin: 0;
+  height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: #0b0f19; /* fondo oscuro profundo */
+  font-family: "Inter", Arial, sans-serif;
+  color: #e5e7eb; /* texto gris claro */
+  /* Fondo estático sin animación */
+}
+
+/* Contenedor principal */
+.container {
+  text-align: center;
+}
+
+/* Caja del formulario */
+.login {
+  background: radial-gradient(1200px circle at 50% -200px, rgba(59, 130, 246, 0.12), transparent),
+              #121826; /* tarjeta oscura */
+  margin-top: 20px;
+  padding: 30px;
+  border-radius: 20px;
+  box-shadow: 0 30px 60px rgba(0, 0, 0, 0.35);
+  display: flex;
+  flex-direction: column;
+  width: 380px;
+  gap: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+}
+
+/* Fondo estático: sin capas animadas */
+
+/* Cada grupo de campo (input + mensaje de error) */
+.field {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Inputs */
+.login input {
+  padding: 12px 14px;
+  font-size: 16px;
+  border: 1px solid #1f2937; /* borde oscuro */
+  border-radius: 12px;
+  box-sizing: border-box;
+  width: 100%;
+  background: #0f172a; /* campo muy oscuro */
+  color: #e5e7eb;
+  transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+}
+
+.login input:focus {
+  outline: none;
+  border-color: #3b82f6; /* azul */
+  box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.18);
+  background: #0b1220;
+}
+
+/* Contenedor del password con el ojo */
+.password-container {
+  position: relative;
+  width: 100%;
+}
+
+.password-container input {
+  width: 100%;
+  padding-right: 40px;
+  /* espacio para el icono */
+  box-sizing: border-box;
+  /* evita romper ancho */
+}
+
+.eye-icon {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 24px;
+  height: 24px;
+  cursor: pointer;
+  opacity: 0.75;
+  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.45));
+}
+
+.eye-icon:hover {
+  opacity: 1;
+}
+
+/* Botón */
+.login button {
+  padding: 12px;
+  background: linear-gradient(90deg, #3b82f6 0%, #8b5cf6 100%); /* azul → morado */
+  color: white;
+  font-size: 16px;
+  border: none;
+  border-radius: 14px;
+  cursor: pointer;
+  transition: transform 0.05s ease, filter 0.2s ease;
+  box-shadow: 0 12px 28px rgba(99, 102, 241, 0.45);
+}
+
+.login button:hover {
+  filter: brightness(1.05);
+}
+
+.login button:active {
+  transform: translateY(1px);
+}
+
+/* Errores individuales de cada campo */
+.error-msg-field {
+  color: #d32f2f;
+  font-size: 0.85rem;
+  margin-top: 4px;
+  text-align: left;
+  /* << alineado a la izquierda */
+  height: 16px;
+  transition: opacity 0.2s ease-in-out;
+}
+
+/* Error general (credenciales incorrectas) */
+.error-msg-general {
+  color: #b71c1c;
+  font-size: 0.9rem;
+  margin-top: 12px;
+  text-align: center;
+  transition: opacity 0.2s ease-in-out;
+}
+
+/* Estilo para inputs con error */
+input.error {
+  border: 1px solid #ef4444 !important;
+  background-color: #2b0d0d;
+  box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.18);
+}
+
+/* Header styling */
+header h1 {
+  color: #e5e7eb;
+  margin: 0 0 8px 0;
+  text-shadow: 0 2px 8px rgba(0,0,0,0.35);
+}
+
+header h3 {
+  color: #94a3b8;
+  margin: 0 0 12px 0;
+  font-weight: 500;
+}
+
+/* Welcome page basics */
+#logoutBtn {
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: linear-gradient(90deg, #ef4444 0%, #f97316 100%);
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 10px 24px rgba(249, 115, 22, 0.35);
+}
+
+#logoutBtn:hover {
+  filter: brightness(1.05);
+}
