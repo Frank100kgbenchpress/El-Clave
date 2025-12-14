@@ -1,3 +1,15 @@
+# Certificados y claves TLS/SSL (no subir)
+certs/
+cert/
+*.crt
+*.key
+*.pem
+*.pfx
+*.cer
+
+# Archivos generados/locales
+__pycache__/
+*.log
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]

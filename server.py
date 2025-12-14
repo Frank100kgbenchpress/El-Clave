@@ -24,7 +24,7 @@ HTTPS_PORT = 443
 # Store de clientes autorizados: { ip: {"mac": str, "last_seen": float} }
 authorized = {}
 auth_lock = threading.Lock()
-TIMEOUT_SECONDS = 120
+TIMEOUT_SECONDS = 7200
 
 
 def get_mac_for_ip(ip: str):
